@@ -36,6 +36,7 @@ const utils_1 = __nccwpck_require__(5278);
  *   ::name key=value,key=value::message
  *
  * Examples:
+ *   warning, {}, 'this is the message' gives:
  *   ::warning::This is the message
  *   ::set-env name=MY_VAR::some value
  */
@@ -49,6 +50,46 @@ function issue(name, message = '') {
 }
 exports.issue = issue;
 const CMD_STRING = '::';
+function issueOutput(env, key, value) {
+  const env_out = new Output(env, key, value);
+  process.stdout.write(env_out.toString() + os.EOL);
+}
+class Output {
+    constructor(env, key, value) {
+        if (!key) {
+          key = 'missing.key';
+        }
+        this.key = key;
+        this.value = value;
+        if (!env) {
+          env = 'missing.env'
+        }
+        this.env = env;
+    }
+    toString() {
+        var str_end = " >> $GITHUB_";
+        str_end += this.env.toUpperCase();
+        var cmd = '';
+
+        if (this.key && Object.keys(this.key).length > 0) {
+          let first = true;
+          for (const k in this.key) {
+            if (this.key.hasOwnProperty(k)){
+              const name = this.key[k];
+              if (name) {
+                first = false;
+              }
+              else {
+                cmd += ',';
+              }
+              cmd += `${escapeProperty(name)}=${escapeData(this.value)}`
+            }
+          }
+        }
+        cmd += str_end;
+        return cmd;
+    }
+}
 class Command {
     constructor(command, properties, message) {
         if (!command) {
@@ -270,7 +311,9 @@ function setOutput(name, value) {
         return file_command_1.issueFileCommand('OUTPUT', file_command_1.prepareKeyValueMessage(name, value));
     }
     process.stdout.write(os.EOL);
-    command_1.issueCommand('set-output', { name }, utils_1.toCommandValue(value));
+    //command_1.issueCommand('set-output', { name }, value);
+    command_1.issueOutput('OUTPUT', { name }, value);
+    //corrected version doesnt even use command...
 }
 exports.setOutput = setOutput;
 /**
