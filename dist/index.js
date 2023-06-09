@@ -49,11 +49,12 @@ function issue(name, message = '') {
     issueCommand(name, {}, message);
 }
 exports.issue = issue;
-const CMD_STRING = '::';
+//consider writing to process.env.GITHUB_OUTPUT instead
 function issueOutput(env, key, value) {
   const env_out = new Output(env, key, value);
   process.stdout.write(env_out.toString() + os.EOL);
 }
+exports.issueOutput = issueOutput;
 class Output {
     constructor(env, key, value) {
         if (!key) {
@@ -90,6 +91,7 @@ class Output {
         return cmd;
     }
 }
+const CMD_STRING = '::';
 class Command {
     constructor(command, properties, message) {
         if (!command) {
