@@ -16,6 +16,16 @@ inputs:
     default: './pytest-coverage.txt'
     required: false
 
+  pytest-xml-coverage-path:
+    description: 'The location of coverage-xml from pytest-coverage'
+    default: ''
+    required: false
+
+  coverage-path-prefix:
+    description: 'Prefix for path when link to files in comment'
+    default: ''
+    required: false
+
   title:
     description: 'Title for the coverage report. Useful for monorepo projects'
     default: 'Coverage Report'
@@ -41,10 +51,16 @@ inputs:
     default: 'false'
     required: false
 
+  report-only-changed-files:
+    description: 'Show in report only changed files for this commit, and not all files'
+    default: 'false'
+    required: false
+
   junitxml-path:
     description: 'The location of the junitxml path'
     default: ''
     required: false
+
   junitxml-title:
     description: 'Title for summary for junitxml'
     default: ''
@@ -66,6 +82,16 @@ inputs:
       Single line should look like `Title, ./path/to/pytest-coverage.txt, ./path/to/pytest.xml`
       example: 
         My Title 1, ./data/pytest-coverage_3.txt, ./data/pytest_1.xml
+    default: ''
+    required: false
+
+  remove-link-from-badge:
+    description: 'When true, it will remove the link from badge to readme'
+    default: 'false'
+    required: false
+
+  unique-id-for-comment:
+    description: 'When running in a matrix, pass the matrix value, so each comment will be updated its own comment'
     default: ''
     required: false
 
@@ -94,5 +120,5 @@ outputs:
     description: 'Info from testcase that has failures/errors/skipped, get from `junitxml`'
 
 runs:
-  using: 'node12'
+  using: 'node16'
   main: 'dist/index.js'

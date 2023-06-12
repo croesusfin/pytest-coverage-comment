@@ -13,7 +13,7 @@ const parseLine = (line) => {
   return {
     title: lineArr[0].trim(),
     covFile: lineArr[1].trim(),
-    xmlFile: lineArr.length > 1 ? lineArr[2].trim() : '',
+    xmlFile: lineArr.length > 2 ? lineArr[2].trim() : '',
   };
 };
 
@@ -35,7 +35,7 @@ const getMultipleReport = (options) => {
     const lineReports = multipleFiles.map(parseLine).filter((l) => l);
     const hasXmlReports = lineReports.some((l) => l.xmlFile);
     const miniTable = `| Title | Coverage |
-| ----- | ----- | ----- |
+| ----- | ----- |
 `;
     const fullTable = `| Title | Coverage | Tests | Skipped | Failures | Errors | Time |
 | ----- | ----- | ----- | ------- | -------- | -------- | ------------------ |
@@ -51,6 +51,12 @@ const getMultipleReport = (options) => {
         table += `| ${l.title} | ${coverage.html}`;
 
         if (i === 0) {
+          core.startGroup(internalOptions.covFile);
+          core.info(`coverage: ${coverage.coverage}`);
+          core.info(`color: ${coverage.color}`);
+          core.info(`warnings: ${coverage.warnings}`);
+          core.endGroup();
+
           core.setOutput('coverage', coverage.coverage);
           core.setOutput('color', coverage.color);
           core.setOutput('warnings', coverage.warnings);
@@ -63,9 +69,12 @@ const getMultipleReport = (options) => {
             const { errors, failures, skipped, tests, time } = summary;
             const valuesToExport = { errors, failures, skipped, tests, time };
 
+            core.startGroup(internalOptions.xmlFile);
             Object.entries(valuesToExport).forEach(([key, value]) => {
               core.setOutput(key, value);
+              core.info(`${key}: ${value}`);
             });
+            core.endGroup();
           }
         }
       } else if (summary) {
@@ -74,7 +83,9 @@ const getMultipleReport = (options) => {
 
       if (hasXmlReports && summary) {
         const { errors, failures, skipped, tests, time } = summary;
-        table += `| ${tests} | ${skipped} :zzz: | ${failures} :x: | ${errors} :fire: | ${time}s :stopwatch: |
+        const displayTime =
+          time > 60 ? `${(time / 60) | 0}m ${time % 60 | 0}s` : `${time}s`;
+        table += `| ${tests} | ${skipped} :zzz: | ${failures} :x: | ${errors} :fire: | ${displayTime} :stopwatch: |
 `;
       } else {
         table += `
@@ -84,7 +95,7 @@ const getMultipleReport = (options) => {
 
     return table;
   } catch (error) {
-    console.log(`Error: on generating summary report`, error);
+    core.error(`Error generating summary report. ${error.message}`);
   }
 
   return '';

@@ -1,27 +1,10 @@
 const xml2js = require('xml2js');
-const { getPathToFile, getContentFile } = require('./utils');
-
-const getXmlContent = (options) => {
-  const { xmlFile } = options;
-
-  try {
-    const xmlFilePath = getPathToFile(xmlFile);
-
-    if (xmlFilePath) {
-      const content = getContentFile(xmlFilePath);
-
-      return content;
-    }
-  } catch (error) {
-    console.log(`Error: Could not get the xml string successfully.`, error);
-  }
-
-  return null;
-};
+const core = require('@actions/core');
+const { getContent } = require('./utils');
 
 // return parsed xml
 const getParsedXml = (options) => {
-  const content = getXmlContent(options);
+  const content = getContent(options.xmlFile);
 
   if (content) {
     return getSummary(content);
@@ -39,7 +22,7 @@ const getSummaryReport = (options) => {
       return toMarkdown(parsedXml, options);
     }
   } catch (error) {
-    console.log(`Error: on generating summary report`, error);
+    core.error(`Error generating summary report. ${error.message}`);
   }
 
   return '';
@@ -55,7 +38,7 @@ const getSummary = (data) => {
 
   const parsed = parser.parseString(data);
   if (!parsed) {
-    console.log(`JUnitXml file is not XML or not well formed`);
+    core.warning(`JUnitXml file is not XML or not well-formed`);
     return '';
   }
 
@@ -71,7 +54,7 @@ const getTestCases = (data) => {
 
   const parsed = parser.parseString(data);
   if (!parsed) {
-    console.log(`JUnitXml file is not XML or not well formed`);
+    core.warning(`JUnitXml file is not XML or not well-formed`);
     return '';
   }
 
@@ -82,7 +65,7 @@ const getNotSuccessTest = (options) => {
   const initData = { count: 0, failures: [], errors: [], skipped: [] };
 
   try {
-    const content = getXmlContent(options);
+    const content = getContent(options.xmlFile);
 
     if (content) {
       const testCaseToOutput = (testcase) => {
@@ -104,7 +87,9 @@ const getNotSuccessTest = (options) => {
       };
     }
   } catch (error) {
-    console.log(`Error: Could not get notSuccessTestInfo successfully.`, error);
+    core.warning(
+      `Could not get notSuccessTestInfo successfully. ${error.message}`
+    );
   }
 
   return initData;
@@ -113,9 +98,11 @@ const getNotSuccessTest = (options) => {
 // convert summary from junitxml to md
 const toMarkdown = (summary, options) => {
   const { errors, failures, skipped, tests, time } = summary;
+  const displayTime =
+    time > 60 ? `${(time / 60) | 0}m ${time % 60 | 0}s` : `${time}s`;
   const table = `| Tests | Skipped | Failures | Errors | Time |
 | ----- | ------- | -------- | -------- | ------------------ |
-| ${tests} | ${skipped} :zzz: | ${failures} :x: | ${errors} :fire: | ${time}s :stopwatch: |
+| ${tests} | ${skipped} :zzz: | ${failures} :x: | ${errors} :fire: | ${displayTime} :stopwatch: |
 `;
 
   if (options.xmlTitle) {

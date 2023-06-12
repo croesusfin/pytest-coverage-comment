@@ -1,4 +1,4 @@
-const fs = require('fs');
+const { mkdirSync, writeFileSync } = require('fs');
 const path = require('path');
 const { getCoverageReport } = require('./parse');
 const {
@@ -7,9 +7,10 @@ const {
   getNotSuccessTest,
 } = require('./junitXml');
 const { getMultipleReport } = require('./multiFiles');
+const { getCoverageXmlReport } = require('./parseXml');
 
 /*  
-  Usefull git commands
+  Useful git commands
   git tag -a -m "Export coverage example" v1.1.7 && git push --follow-tags 
   git tag -d v1.0 
   git tag -d origin v1.0  
@@ -28,14 +29,16 @@ const getPathToFile = (pathToFile) => {
     return null;
   }
 
-  // suports absolute path like '/tmp/pytest-coverage.txt'
+  // supports absolute path like '/tmp/pytest-coverage.txt'
   return pathToFile.startsWith('/') ? pathToFile : `${__dirname}/${pathToFile}`;
 };
 
 const main = async () => {
   const covFile = './../data/pytest-coverage_4.txt';
   const xmlFile = './../data/pytest_1.xml';
+  const covXmlFile = './../data/coverage_1.xml';
   const prefix = path.dirname(path.dirname(path.resolve(covFile))) + '/';
+  // eslint-disable-next-line
   const multipleFiles = [
     `My Title 1, ${getPathToFile(covFile)}, ${getPathToFile(xmlFile)}`,
     `My Title 2, ${getPathToFile(covFile).replace('_4', '_3')}, ${getPathToFile(
@@ -49,8 +52,10 @@ const main = async () => {
     repository: 'MishaKav/pytest-coverage-comment',
     commit: 'f9d42291812ed03bb197e48050ac38ac6befe4e5',
     prefix,
+    pathPrefix: '',
     covFile: getPathToFile(covFile),
     xmlFile: getPathToFile(xmlFile),
+    covXmlFile: getPathToFile(covXmlFile),
     defaultBranch: 'main',
     head: 'feat/test',
     base: 'main',
@@ -59,43 +64,60 @@ const main = async () => {
     hideBadge: false,
     hideReport: false,
     createNewComment: false,
+    reportOnlyChangedFiles: false,
+    removeLinkFromBadge: false,
     hideComment: false,
     xmlTitle: '',
-    multipleFiles,
+    // multipleFiles,
+    changedFiles: {
+      all: [
+        'functions/example_completed/example_completed.py',
+        'functions/example_manager/example_manager.py',
+        'functions/example_manager/example_static.py',
+      ],
+    },
   };
 
-  if (options.multipleFiles && options.multipleFiles.length) {
-    finalHtml += getMultipleReport(options);
-  } else {
-    const { html } = getCoverageReport(options);
-    const summaryReport = getSummaryReport(options);
+  const { html } = options.covXmlFile
+    ? getCoverageXmlReport(options)
+    : getCoverageReport(options);
 
-    // set to output junitxml values
-    if (summaryReport) {
-      const parsedXml = getParsedXml(options);
-      const { errors, failures, skipped, tests, time } = parsedXml;
-      const valuesToExport = { errors, failures, skipped, tests, time };
-      const notSuccessTestInfo = getNotSuccessTest(options);
+  const summaryReport = getSummaryReport(options);
 
-      console.log('notSuccessTestInfo', JSON.stringify(notSuccessTestInfo));
+  // set to output junitxml values
+  if (summaryReport) {
+    const parsedXml = getParsedXml(options);
+    const { errors, failures, skipped, tests, time } = parsedXml;
+    const valuesToExport = { errors, failures, skipped, tests, time };
+    const notSuccessTestInfo = getNotSuccessTest(options);
 
-      Object.entries(valuesToExport).forEach(([key, value]) => {
-        console.log(key, value);
-      });
-    }
+    console.log('notSuccessTestInfo', JSON.stringify(notSuccessTestInfo));
 
-    finalHtml += html;
-    finalHtml += finalHtml.length ? `\n\n${summaryReport}` : summaryReport;
+    Object.entries(valuesToExport).forEach(([key, value]) => {
+      console.log(key, value);
+    });
   }
+
+  finalHtml += html;
+  finalHtml += finalHtml.length ? `\n\n${summaryReport}` : summaryReport;
+
+  let multipleFilesHtml = '';
+  if (options.multipleFiles && options.multipleFiles.length) {
+    multipleFilesHtml = `\n\n${getMultipleReport(options)}`;
+  }
+
+  finalHtml += multipleFilesHtml
+    ? `\n\n${multipleFilesHtml}`
+    : multipleFilesHtml;
 
   if (!finalHtml || options.hideComment) {
     console.log('Nothing to report');
     return;
   }
 
-  const resultFile = __dirname + '/../tmp/result.md';
-  fs.promises.mkdir(__dirname + '/../tmp').catch(console.error);
-  fs.writeFileSync(resultFile, finalHtml);
+  const resultFile = `${__dirname}/../tmp/result.md`;
+  mkdirSync(`${__dirname}/../tmp`, { recursive: true });
+  writeFileSync(resultFile, finalHtml);
   console.log(resultFile);
 };
 

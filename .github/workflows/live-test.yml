@@ -1,12 +1,17 @@
 name: My Pytest Coverage Comment
 on:
   pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   live-test:
     name: Live Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Pytest coverage comment
         id: coverageComment
@@ -32,7 +37,7 @@ jobs:
           echo "Not Success Test Info - ${{ steps.coverageComment.outputs.notSuccessTestInfo }}"
 
       - name: Create the Badge
-        uses: schneegans/dynamic-badges-action@v1.0.0
+        uses: schneegans/dynamic-badges-action@v1.6.0
         with:
           auth: ${{ secrets.PYTEST_COVERAGE_COMMENT }}
           gistID: 5e90d640f8c212ab7bbac38f72323f80

@@ -1,13 +1,14 @@
-const { getPathToFile, getContentFile } = require('./utils');
+const core = require('@actions/core');
+const { getPathToFile, getContentFile, getCoverageColor } = require('./utils');
 
-// return true if "covergae file" include all special words
+// return true if "coverage file" include all special words
 const isValidCoverageContent = (data) => {
   if (!data || !data.length) {
     return false;
   }
 
   const wordsToInclude = [
-    'coverage: platform linux',
+    'coverage: platform',
     'Stmts',
     'Miss',
     'Cover',
@@ -17,70 +18,36 @@ const isValidCoverageContent = (data) => {
   return wordsToInclude.every((w) => data.includes(w));
 };
 
-// return full html coverage report and coverage percenatge
+// return full html coverage report and coverage percentage
 const getCoverageReport = (options) => {
-  const { covFile } = options;
+  const { covFile, covXmlFile } = options;
 
-  try {
-    const covFilePath = getPathToFile(covFile);
-    const content = getContentFile(covFilePath);
-    const coverage = getTotalCoverage(content);
-    const isValid = isValidCoverageContent(content);
+  if (!covXmlFile) {
+    try {
+      const covFilePath = getPathToFile(covFile);
+      const content = getContentFile(covFilePath);
+      const coverage = getTotalCoverage(content);
+      const isValid = isValidCoverageContent(content);
 
-    if (content && !isValid) {
-      console.log(
-        `Error: coverage file "${covFilePath}" has bad format or wrong data`
-      );
+      if (content && !isValid) {
+        // prettier-ignore
+        core.error(`Coverage file "${covFilePath}" has bad format or wrong data`);
+      }
+
+      if (content && isValid) {
+        const html = toHtml(content, options);
+        const total = getTotal(content);
+        const warnings = getWarnings(content);
+        const color = getCoverageColor(total ? total.cover : '0');
+
+        return { html, coverage, color, warnings };
+      }
+    } catch (error) {
+      core.error(`Generating coverage report. ${error.message}`);
     }
-
-    if (content && isValid) {
-      const html = toHtml(content, options);
-      const total = getTotal(content);
-      const warnings = getWarnings(content);
-      const color = getCoverageColor(total ? total.cover : '0');
-
-      return { html, coverage, color, warnings };
-    }
-  } catch (error) {
-    console.log(`Error: on generating coverage report`, error);
   }
 
   return { html: '', coverage: '0', color: 'red', warnings: 0 };
-};
-
-// get coverage color
-const getCoverageColor = (percentage) => {
-  // https://shields.io/category/coverage
-  const rangeColors = [
-    {
-      color: 'red',
-      range: [0, 40],
-    },
-    {
-      color: 'orange',
-      range: [40, 60],
-    },
-    {
-      color: 'yellow',
-      range: [60, 80],
-    },
-    {
-      color: 'green',
-      range: [80, 90],
-    },
-    {
-      color: 'brightgreen',
-      range: [90, 101],
-    },
-  ];
-
-  const num = parseFloat(percentage);
-
-  const { color } =
-    rangeColors.find(({ range: [min, max] }) => num >= min && num < max) ||
-    rangeColors[0];
-
-  return color;
 };
 
 // get actual lines from coverage-file
@@ -106,9 +73,9 @@ const getTotal = (data) => {
   }
 
   const lines = data.split('\n');
-  const line = lines.find((l) => l.includes('TOTAL     '));
+  const line = lines.find((l) => l.includes('TOTAL    '));
 
-  return parseOneLine(line);
+  return parseTotalLine(line);
 };
 
 // get number of warnings from coverage-file
@@ -141,12 +108,42 @@ const parseOneLine = (line) => {
     return null;
   }
 
+  const lastItem = parsedLine[parsedLine.length - 1];
+  const isFullCoverage = lastItem === '100%';
+  const cover = isFullCoverage
+    ? '100%'
+    : parsedLine[parsedLine.length - 2].trimStart();
+  const missing = isFullCoverage
+    ? null
+    : parsedLine[parsedLine.length - 1] &&
+      parsedLine[parsedLine.length - 1].split(', ');
+
   return {
     name: parsedLine[0],
     stmts: parsedLine[1].trimStart(),
     miss: parsedLine[2].trimStart(),
-    cover: parsedLine[3].trimStart(),
-    missing: parsedLine[4] && parsedLine[4].split(', '),
+    cover,
+    missing,
+  };
+};
+
+// parse total line from coverage-file
+const parseTotalLine = (line) => {
+  if (!line) {
+    return null;
+  }
+
+  const parsedLine = line.split('  ').filter((l) => l);
+
+  if (parsedLine.length < 4) {
+    return null;
+  }
+
+  return {
+    name: parsedLine[0],
+    stmts: parsedLine[1].trimStart(),
+    miss: parsedLine[2].trimStart(),
+    cover: parsedLine[parsedLine.length - 1].trimStart(),
   };
 };
 
@@ -184,42 +181,68 @@ const getTotalCoverage = (data) => {
 };
 
 // convert all data to html output
-const toHtml = (data, options) => {
-  const { badgeTitle, title, hideBadge, hideReport } = options;
-  const table = hideReport ? '' : toTable(data, options);
-  const total = getTotal(data);
+const toHtml = (data, options, dataFromXml = null) => {
+  const {
+    badgeTitle,
+    title,
+    hideBadge,
+    hideReport,
+    reportOnlyChangedFiles,
+    removeLinkFromBadge,
+  } = options;
+  const table = hideReport ? '' : toTable(data, options, dataFromXml);
+  const total = dataFromXml ? dataFromXml.total : getTotal(data);
   const color = getCoverageColor(total.cover);
-  const readmeHref = `https://github.com/${options.repository}/blob/${options.commit}/README.md`;
-  const badgeHtml = hideBadge
-    ? ''
-    : `<a href="${readmeHref}"><img alt="${badgeTitle}" src="https://img.shields.io/badge/${badgeTitle}-${total.cover}25-${color}.svg" /></a><br/>`;
+  const onlyChnaged = reportOnlyChangedFiles ? '• ' : '';
+  const readmeHref = `${options.repoUrl}/blob/${options.commit}/README.md`;
+  const badge = `<img alt="${badgeTitle}" src="https://img.shields.io/badge/${badgeTitle}-${total.cover}25-${color}.svg" />`;
+  const badgeWithLink = removeLinkFromBadge
+    ? badge
+    : `<a href="${readmeHref}">${badge}</a>`;
+  const badgeHtml = hideBadge ? '' : badgeWithLink;
   const reportHtml = hideReport
     ? ''
-    : `<details><summary>${title}</summary>${table}</details>`;
+    : `<details><summary>${title} ${onlyChnaged}</summary>${table}</details>`;
 
   return `${badgeHtml}${reportHtml}`;
 };
 
 // make html table from coverage-file
-const toTable = (data, options) => {
-  const coverage = parse(data);
+const toTable = (data, options, dataFromXml = null) => {
+  const coverage = dataFromXml ? dataFromXml.coverage : parse(data);
+  const { reportOnlyChangedFiles, changedFiles } = options;
 
   if (!coverage) {
-    console.log(`Coverage file not well formed`);
+    core.warning(`Coverage file not well-formed`);
     return null;
   }
-  const totalLine = getTotal(data);
+  const totalLine = dataFromXml ? dataFromXml.total : getTotal(data);
   options.hasMissing = coverage.some((c) => c.missing);
 
-  console.log(`Generating coverage report`);
+  core.info(`Generating coverage report`);
   const headTr = toHeadRow(options);
-
   const totalTr = toTotalRow(totalLine, options);
-
   const folders = makeFolders(coverage, options);
 
   const rows = Object.keys(folders)
     .sort()
+    .filter((folderPath) => {
+      if (!reportOnlyChangedFiles) {
+        return true;
+      }
+
+      const allFilesInFolder = Object.values(folders[folderPath]).map(
+        (f) => f.name
+      );
+
+      folders[folderPath] = folders[folderPath].filter((f) =>
+        changedFiles.all.some((c) => c.includes(f.name))
+      );
+      const fileExistsInFolder = allFilesInFolder.some((f) =>
+        changedFiles.all.some((c) => c.includes(f))
+      );
+      return fileExistsInFolder;
+    })
     .reduce(
       (acc, key) => [
         ...acc,
@@ -229,7 +252,14 @@ const toTable = (data, options) => {
       []
     );
 
-  return `<table>${headTr}<tbody>${rows.join('')}${totalTr}</tbody></table>`;
+  const hasLines = rows.length > 0;
+  const isFilesChanged =
+    reportOnlyChangedFiles && !hasLines
+      ? `<i>report-only-changed-files is enabled. No files were changed during this commit :)</i>`
+      : '';
+
+  // prettier-ignore
+  return `<table>${headTr}<tbody>${rows.join('')}${totalTr}</tbody></table>${isFilesChanged}`;
 };
 
 // make html head row - th
@@ -261,12 +291,12 @@ const toTotalRow = (item, options) => {
 // make fileName cell - td
 const toFileNameTd = (item, indent = false, options) => {
   const relative = item.name.replace(options.prefix, '');
-  const href = `https://github.com/${options.repository}/blob/${options.commit}/${relative}`;
+  const href = `${options.repoUrl}/blob/${options.commit}/${options.pathPrefix}${relative}`;
   const parts = relative.split('/');
   const last = parts[parts.length - 1];
   const space = indent ? '&nbsp; &nbsp;' : '';
 
-  return `${space}<a href="${href}">${last}</a>`;
+  return `${space}<a href="${href}">${last.replace(/__/g, '\\_\\_')}</a>`;
 };
 
 // make folder row - tr
@@ -281,7 +311,7 @@ const toFolderTd = (path, options) => {
 
 // make missing cell - td
 const toMissingTd = (item, options) => {
-  if (!item.missing) {
+  if (!item.missing || !item.missing.length) {
     return '&nbsp;';
   }
 
@@ -290,7 +320,7 @@ const toMissingTd = (item, options) => {
       const [start, end = start] = range.split('-');
       const fragment = start === end ? `L${start}` : `L${start}-L${end}`;
       const relative = item.name;
-      const href = `https://github.com/${options.repository}/blob/${options.commit}/${relative}#${fragment}`;
+      const href = `${options.repoUrl}/blob/${options.commit}/${options.pathPrefix}${relative}#${fragment}`;
       const text = start === end ? start : `${start}&ndash;${end}`;
 
       return `<a href="${href}">${text}</a>`;
@@ -298,4 +328,4 @@ const toMissingTd = (item, options) => {
     .join(', ');
 };
 
-module.exports = { getCoverageReport };
+module.exports = { getCoverageReport, getCoverageColor, toTable, toHtml };
